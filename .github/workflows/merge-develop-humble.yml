@@ -1,4 +1,4 @@
-name: Auto Merge develop to develop-humble 
+name: Auto Merge develop to develop-humble
 
 on:
   workflow_call:
@@ -28,7 +28,7 @@ jobs:
       - name: Fetch All Branches
         run: git fetch --all
 
-      - name: Attempt Merging develop into develop-humble 
+      - name: Attempt Merging develop into develop-humble
         run: |
           git checkout ${{ inputs.branch_to }}
           git merge origin/${{ inputs.branch_from }} || exit 1
@@ -37,8 +37,15 @@ jobs:
         if: ${{ success() }}
         run: git push origin ${{ inputs.branch_to }}
 
+      - name: Setup GH_TOKEN for GitHub CLI
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "Configured GH_TOKEN for GitHub CLI."
+
       - name: Notify Team on Conflict
         if: ${{ failure() && inputs.notify_team != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh pr create --title "Merge ${{ inputs.branch_from }} into ${{ inputs.branch_to }}" \
                        --body "Conflicts detected. Manual resolution needed."
