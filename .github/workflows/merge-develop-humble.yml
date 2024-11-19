@@ -30,26 +30,40 @@ jobs:
       - name: Fetch All Branches
         run: git fetch --all
 
-      - name: Attempt Merging develop into develop-humble
-        run: |
-          git checkout ${{ inputs.branch_to }}
-          git merge origin/${{ inputs.branch_from }} || exit 1
-
-      - name: Push Changes
-        if: ${{ success() }}
-        run: git push origin ${{ inputs.branch_to }}
-
-      - name: Setup GH_TOKEN for GitHub CLI
+      - name: Create Pull Request
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: echo "Configured GH_TOKEN for GitHub CLI."
+        run: |
+          # Check if PR already exists
+          existing_pr=$(gh pr list --base ${{ inputs.branch_to }} --head ${{ inputs.branch_from }} --json number --jq '.[0].number')
+          
+          if [ -z "$existing_pr" ]; then
+            # Create a new PR
+            gh pr create \
+              --title "Merge ${{ inputs.branch_from }} into ${{ inputs.branch_to }}" \
+              --body "Automated PR to merge ${{ inputs.branch_from }} into ${{ inputs.branch_to }}" \
+              --base ${{ inputs.branch_to }} \
+              --head ${{ inputs.branch_from }}
+          else
+            echo "Pull request already exists: $existing_pr"
+          fi
+
+      - name: Attempt to Auto-Merge Pull Request
+        if: ${{ success() }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get the PR number
+          pr_number=$(gh pr list --base ${{ inputs.branch_to }} --head ${{ inputs.branch_from }} --json number --jq '.[0].number')
+
+          # Try to merge the PR
+          gh pr merge $pr_number --merge --admin || exit 1
 
       - name: Notify Team on Conflict
         if: ${{ failure() && inputs.notify_team != '' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh pr create --title "Merge ${{ inputs.branch_from }} into ${{ inputs.branch_to }}" \
-                       --body "Conflicts detected. Manual resolution needed."
-          gh pr comment $(gh pr list --limit 1 --json number --jq '.[0].number') \
-                       --body "@${{ inputs.notify_team }}: Conflicts need to be resolved."
+          # Notify the team about conflicts
+          pr_number=$(gh pr list --base ${{ inputs.branch_to }} --head ${{ inputs.branch_from }} --json number --jq '.[0].number')
+          gh pr comment $pr_number --body "@${{ inputs.notify_team }}: Conflicts detected. Manual resolution needed."
