@@ -1,0 +1,46 @@
+name: Auto Merge develop to develop-humble 
+
+on:
+  workflow_call:
+    inputs:
+      branch_from:
+        required: true
+        type: string
+      branch_to:
+        required: true
+        type: string
+      notify_team:
+        required: false
+        type: string
+
+jobs:
+  auto-merge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Setup Git
+        run: |
+          git config user.name "SaikrishnaBairamoni"
+          git config user.email "saikrishna.bairamoni@leidos.com"
+
+      - name: Fetch All Branches
+        run: git fetch --all
+
+      - name: Attempt Merging develop into develop-humble 
+        run: |
+          git checkout ${{ inputs.branch_to }}
+          git merge origin/${{ inputs.branch_from }} || exit 1
+
+      - name: Push Changes
+        if: ${{ success() }}
+        run: git push origin ${{ inputs.branch_to }}
+
+      - name: Notify Team on Conflict
+        if: ${{ failure() && inputs.notify_team != '' }}
+        run: |
+          gh pr create --title "Merge ${{ inputs.branch_from }} into ${{ inputs.branch_to }}" \
+                       --body "Conflicts detected. Manual resolution needed."
+          gh pr comment $(gh pr list --limit 1 --json number --jq '.[0].number') \
+                       --body "@${{ inputs.notify_team }}: Conflicts need to be resolved."
